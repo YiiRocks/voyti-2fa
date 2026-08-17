@@ -1,0 +1,111 @@
+{
+    "name": "yiirocks/voyti-2fa",
+    "description": "Two-factor authentication subsystem for the YiiRocks Voyti Yii3 extension",
+    "type": "library",
+    "keywords": [
+        "yii",
+        "yii3",
+        "user",
+        "auth",
+        "two-factor",
+        "2fa",
+        "extension"
+    ],
+    "homepage": "https://www.yii.rocks/voyti/",
+    "license": "BSD-3-Clause",
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "authors": [
+        {
+            "name": "Mr.42",
+            "homepage": "https://mr42.me/",
+            "role": "Developer"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/YiiRocks/voyti-2fa/issues",
+        "source": "https://github.com/YiiRocks/voyti-2fa/tree/main"
+    },
+    "require": {
+        "php": ">=8.3",
+        "yiirocks/voyti": "^1.0"
+    },
+    "require-dev": {
+        "ext-pdo_sqlite": "*",
+        "friendsofphp/php-cs-fixer": "@stable",
+        "infection/infection": "^0.34.0",
+        "nyholm/psr7": "^1.8",
+        "phpunit/phpunit": "@stable",
+        "rector/rector": "^2.1.1",
+        "vimeo/psalm": "6.x-dev",
+        "yiisoft/code-style": "^1.1",
+        "yiisoft/config": "^1.6",
+        "yiisoft/csrf": "^2.0",
+        "yiisoft/db-migration": "^2.0",
+        "yiisoft/db-sqlite": "^2.0",
+        "yiisoft/di": "*",
+        "yiisoft/mailer": "^6.1",
+        "yiisoft/router": "^4.0",
+        "yiisoft/router-fastroute": "^4.0",
+        "yiisoft/session": "^3.0",
+        "yiisoft/user": "^2.3",
+        "yiisoft/yii-view-renderer": "^7.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "YiiRocks\\Voyti\\TwoFactor\\": "src"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "YiiRocks\\Voyti\\TwoFactor\\tests\\": "tests"
+        }
+    },
+    "repositories": [
+        {
+            "type": "composer",
+            "url": "https://asset-packagist.org"
+        }
+    ],
+    "scripts": {
+        "php-cs-fixer": "@php vendor/bin/php-cs-fixer fix",
+        "phpunit": "@php vendor/bin/phpunit",
+        "psalm": "@php vendor/bin/psalm",
+        "infection": "@php vendor/bin/infection",
+        "rector": "@php vendor/bin/rector process"
+    },
+    "scripts-descriptions": {
+        "php-cs-fixer": "Cleans to code with PHP Coding Standards Fixer.",
+        "phpunit": "PHPUnit - programmer-oriented testing framework.",
+        "psalm": "Psalm - static analysis tool for finding errors in PHP applications.",
+        "infection": "Infection - PHP Mutation Testing Framework.",
+        "rector": "Rector - automated tool for refactoring and upgrading PHP code."
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "1.0.x-dev"
+        },
+        "config-plugin-options": {
+            "source-directory": "config"
+        },
+        "config-plugin": {
+            "params": "params.php",
+            "params-console": "params-console.php",
+            "di": "di.php",
+            "voyti-routes": "routes.php"
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "infection/extension-installer": true,
+            "yiisoft/config": true
+        }
+    },
+    "funding": [
+        {
+            "type": "github",
+            "url": "https://github.com/sponsors/YiiRocks"
+        }
+    ]
+}
