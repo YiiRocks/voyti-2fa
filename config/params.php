@@ -14,11 +14,11 @@ return [
                 'route' => 'voyti/user-two-factor',
             ],
         ],
-    ],
 
-    'yiirocks/voyti-2fa' => [
-        // Permissions whose holders must have 2FA enabled; enforced by
-        // TwoFactorAuthenticationEnforceMiddleware once the host adds it to its pipeline.
-        'forcedPermissions' => [],
+        '2fa' => [
+            // Permissions whose holders must have 2FA enabled; enforced by
+            // TwoFactorAuthenticationEnforceMiddleware once the host adds it to its pipeline.
+            'forcedPermissions' => [],
+        ],
     ],
 ];

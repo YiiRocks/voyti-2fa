@@ -39,7 +39,7 @@ return [
     TwoFactorAuthenticationEnforceMiddleware::class => [
         'class' => TwoFactorAuthenticationEnforceMiddleware::class,
         '__construct()' => [
-            'forcedPermissions' => $params['yiirocks/voyti-2fa']['forcedPermissions'] ?? [],
+            'forcedPermissions' => $params['yiirocks/voyti']['2fa']['forcedPermissions'] ?? [],
         ],
         'tags' => ['voyti.enforce-middleware'],
     ],
