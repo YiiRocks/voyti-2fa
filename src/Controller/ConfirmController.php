@@ -13,7 +13,6 @@ use YiiRocks\Voyti\Service\Auth\LoginCompletionService;
 use YiiRocks\Voyti\TwoFactor\Auth\TwoFactorLoginChallenge;
 use YiiRocks\Voyti\TwoFactor\Form\ConfirmForm;
 use YiiRocks\Voyti\TwoFactor\Model\UserTwoFactor;
-use YiiRocks\Voyti\TwoFactor\ResolvesPluginViewPath;
 use YiiRocks\Voyti\TwoFactor\Service\BackupCodeService;
 use YiiRocks\Voyti\TwoFactor\TwoFactorMethodInterface;
 use YiiRocks\Voyti\TwoFactor\TwoFactorMethodRegistry;
@@ -35,9 +34,6 @@ use Yiisoft\Yii\View\Renderer\WebViewRenderer;
 final readonly class ConfirmController
 {
     use RenderTrait;
-    use ResolvesPluginViewPath {
-        ResolvesPluginViewPath::resolveViewPath insteadof RenderTrait;
-    }
 
     private const string SESSION_KEY_CREDENTIALS = 'credentials';
 

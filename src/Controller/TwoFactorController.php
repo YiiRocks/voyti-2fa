@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace YiiRocks\Voyti\TwoFactor\Controller;
 
-use Composer\InstalledVersions;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -17,7 +16,6 @@ use YiiRocks\Voyti\Service\FlashNotifier;
 use YiiRocks\Voyti\TwoFactor\Form\TwoFactorCodeForm;
 use YiiRocks\Voyti\TwoFactor\Helper\Views\IndexView;
 use YiiRocks\Voyti\TwoFactor\Model\UserTwoFactor;
-use YiiRocks\Voyti\TwoFactor\ResolvesPluginViewPath;
 use YiiRocks\Voyti\TwoFactor\Service\BackupCodeService;
 use YiiRocks\Voyti\TwoFactor\TwoFactorMethodInterface;
 use YiiRocks\Voyti\TwoFactor\TwoFactorMethodRegistry;
@@ -40,9 +38,6 @@ final readonly class TwoFactorController
 {
     use RedirectTrait;
     use RenderTrait;
-    use ResolvesPluginViewPath {
-        ResolvesPluginViewPath::resolveViewPath insteadof RenderTrait;
-    }
 
     private const string SESSION_KEY_BACKUP_CODES = 'backupCodes';
 
@@ -234,18 +229,6 @@ final readonly class TwoFactorController
         return $this->renderBackupCodes($codes);
     }
 
-    /**
-     * Absolute base path of the core module's bundled views, so this package's own templates can
-     * render the shared account chrome (menu, flash) that stays in core.
-     */
-    private function coreViewPath(): string
-    {
-        /** @var non-empty-string $corePath */
-        $corePath = InstalledVersions::getInstallPath('yiirocks/voyti');
-
-        return $corePath . '/resources/views/' . $this->config->webTheme->value;
-    }
-
     private function errorMessage(string $validatorMessage): string
     {
         return $validatorMessage !== ''
@@ -266,7 +249,7 @@ final readonly class TwoFactorController
     private function renderBackupCodes(array $codes): ResponseInterface
     {
         return $this->renderView('two-factor/backup-codes', [
-            'coreViews' => $this->coreViewPath(),
+            'coreViews' => $this->resolveViewPath('shared/_menu'),
             'data' => [
                 'menu' => MenuView::account($this->config, $this->url, $this->translator()),
                 'codes' => $codes,
@@ -278,7 +261,7 @@ final readonly class TwoFactorController
     private function renderMethodsUnavailable(): ResponseInterface
     {
         return $this->renderView('two-factor/unavailable', [
-            'coreViews' => $this->coreViewPath(),
+            'coreViews' => $this->resolveViewPath('shared/_menu'),
             'data' => [
                 'menu' => MenuView::account($this->config, $this->url, $this->translator()),
             ],
@@ -296,7 +279,7 @@ final readonly class TwoFactorController
         ?string $preloadedFragmentHtml = null,
     ): ResponseInterface {
         return $this->renderView('two-factor/index', [
-            'coreViews' => $this->coreViewPath(),
+            'coreViews' => $this->resolveViewPath('shared/_menu'),
             'form' => new TwoFactorCodeForm($this->translator, $method->getName()),
             'data' => IndexView::create(
                 UserTwoFactor::forUser($user)->isEnabled(),

@@ -13,7 +13,6 @@ use YiiRocks\Voyti\Model\User;
 use YiiRocks\Voyti\TwoFactor\Controller\ConfirmController;
 use YiiRocks\Voyti\TwoFactor\Form\ConfirmForm;
 use YiiRocks\Voyti\TwoFactor\Model\UserTwoFactor;
-use YiiRocks\Voyti\TwoFactor\ResolvesPluginViewPath;
 use YiiRocks\Voyti\TwoFactor\TwoFactorMethodRegistry;
 use YiiRocks\Voyti\VoytiConfig;
 use Yiisoft\Router\UrlGeneratorInterface;
@@ -30,9 +29,6 @@ use Yiisoft\Yii\View\Renderer\WebViewRenderer;
 final readonly class TwoFactorLoginChallenge implements LoginChallengeInterface
 {
     use RenderTrait;
-    use ResolvesPluginViewPath {
-        ResolvesPluginViewPath::resolveViewPath insteadof RenderTrait;
-    }
 
     private const string SESSION_KEY_CREDENTIALS = 'credentials';
 
