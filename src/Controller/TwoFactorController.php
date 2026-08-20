@@ -24,6 +24,7 @@ use YiiRocks\Voyti\TwoFactor\TwoFactorMethodRegistry;
 use YiiRocks\Voyti\VoytiConfig;
 use Yiisoft\Input\Http\Attribute\Parameter\Body;
 use Yiisoft\Router\UrlGeneratorInterface;
+use Yiisoft\Session\SessionInterface;
 use Yiisoft\Translator\TranslatorInterface;
 use Yiisoft\User\CurrentUser;
 use Yiisoft\Yii\View\Renderer\WebViewRenderer;
@@ -43,6 +44,8 @@ final readonly class TwoFactorController
         ResolvesPluginViewPath::resolveViewPath insteadof RenderTrait;
     }
 
+    private const string SESSION_KEY_BACKUP_CODES = 'backupCodes';
+
     public function __construct(
         private TranslatorInterface $translator,
         private WebViewRenderer $viewRenderer,
@@ -50,6 +53,7 @@ final readonly class TwoFactorController
         private VoytiConfig $config,
         private CurrentUser $currentUser,
         private ResponseFactoryInterface $responseFactory,
+        private SessionInterface $session,
         private FlashNotifier $flashNotifier,
         private BackupCodeService $backupCodeService,
         private TwoFactorMethodRegistry $twoFactorMethods,
@@ -153,6 +157,10 @@ final readonly class TwoFactorController
 
     public function index(): ResponseInterface
     {
+        // Arriving here means the user has moved on from the backup-codes reveal (if any was
+        // pending), so the one-time stash from regenerateBackupCodes() is done being reachable.
+        $this->session->remove(self::SESSION_KEY_BACKUP_CODES);
+
         /** @var User $user */
         $user = $this->currentUser->getIdentity();
         $twoFactor = UserTwoFactor::forUser($user);
@@ -191,7 +199,39 @@ final readonly class TwoFactorController
             );
         }
 
-        return $this->renderBackupCodes($this->backupCodeService->generate($user));
+        $this->session->set(self::SESSION_KEY_BACKUP_CODES, $this->backupCodeService->generate($user));
+
+        return $this->redirect($this->url->generate('voyti/user-two-factor-backup-codes'));
+    }
+
+    /**
+     * Displays codes stashed by a prior {@see regenerateBackupCodes()} redirect. Reading this route
+     * doesn't clear the stash - {@see index()} does, once the user moves on - because the WebAuthn
+     * reauth ceremony's fetch() silently follows the redirect once before the browser navigates here
+     * a second time for real; clearing on the first (discarded) read would hide the codes from the
+     * second (visible) one.
+     */
+    public function showBackupCodes(): ResponseInterface
+    {
+        /** @var mixed $codesValue */
+        $codesValue = $this->session->get(self::SESSION_KEY_BACKUP_CODES);
+
+        /** @var list<string> $codes */
+        $codes = [];
+        if (is_array($codesValue)) {
+            /** @var mixed $code */
+            foreach ($codesValue as $code) {
+                if (is_string($code)) {
+                    $codes[] = $code;
+                }
+            }
+        }
+
+        if ($codes === []) {
+            return $this->redirect($this->url->generate('voyti/user-two-factor'));
+        }
+
+        return $this->renderBackupCodes($codes);
     }
 
     /**

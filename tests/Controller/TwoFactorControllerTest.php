@@ -20,6 +20,7 @@ use YiiRocks\Voyti\TwoFactor\tests\Support\TestContainerTrait;
 use YiiRocks\Voyti\TwoFactor\tests\Support\UserFactoryTrait;
 use YiiRocks\Voyti\TwoFactor\TwoFactorMethodRegistry;
 use Yiisoft\Session\Flash\FlashInterface;
+use Yiisoft\Session\SessionInterface;
 use Yiisoft\User\CurrentUser;
 
 final class TwoFactorControllerTest extends TestCase
@@ -243,6 +244,20 @@ final class TwoFactorControllerTest extends TestCase
         self::assertFalse(UserTwoFactor::forUser($user)->isEnabled());
     }
 
+    public function testIndexClearsStashedBackupCodes(): void
+    {
+        $user = $this->createUser();
+        $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'totp');
+        [$container, $controller] = $this->build($user, new FakeTwoFactorMethod(name: 'totp'));
+        /** @var SessionInterface $session */
+        $session = $container->get(SessionInterface::class);
+        $session->set('backupCodes', ['AAAAAAAAAA']);
+
+        $controller->index();
+
+        self::assertNull($session->get('backupCodes'));
+    }
+
     public function testIndexEnabledResolvesStoredMethodOverDefault(): void
     {
         // Two methods registered; the user's stored method is the non-default one. The index must
@@ -324,23 +339,6 @@ final class TwoFactorControllerTest extends TestCase
         self::assertStringContainsString('no authentication methods are installed', (string) $response->getBody());
     }
 
-    public function testRegenerateBackupCodes(): void
-    {
-        $user = $this->createUser();
-        $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'totp');
-        $method = new FakeTwoFactorMethod(name: 'totp', verifyResult: true);
-        [$container, $controller] = $this->build($user, $method);
-
-        $response = $controller->regenerateBackupCodes($this->post(), '123456');
-
-        self::assertSame(200, $response->getStatusCode());
-        self::assertSame(['code' => '123456'], $method->lastVerifyData);
-        self::assertStringContainsString('Backup Codes', (string) $response->getBody());
-        /** @var BackupCodeService $backupCodes */
-        $backupCodes = $container->get(BackupCodeService::class);
-        self::assertTrue($backupCodes->hasUnused($user));
-    }
-
     public function testRegenerateBackupCodesFailureShowsError(): void
     {
         $user = $this->createUser();
@@ -365,8 +363,27 @@ final class TwoFactorControllerTest extends TestCase
         self::assertSame('//voyti/user-two-factor', $response->getHeaderLine('Location'));
     }
 
-    public function testRegenerateBackupCodesViaPayloadForNonCodeBasedMethod(): void
+    public function testRegenerateBackupCodesSuccess(): void
     {
+        // Code-based method: the code is passed to the action directly.
+        $user = $this->createUser();
+        $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'totp');
+        $method = new FakeTwoFactorMethod(name: 'totp', verifyResult: true);
+        [$container, $controller] = $this->build($user, $method);
+
+        $response = $controller->regenerateBackupCodes($this->post(), '123456');
+
+        self::assertSame(302, $response->getStatusCode());
+        self::assertSame('//voyti/user-two-factor-backup-codes', $response->getHeaderLine('Location'));
+        self::assertSame(['code' => '123456'], $method->lastVerifyData);
+        /** @var BackupCodeService $backupCodes */
+        $backupCodes = $container->get(BackupCodeService::class);
+        self::assertTrue($backupCodes->hasUnused($user));
+        /** @var SessionInterface $session */
+        $session = $container->get(SessionInterface::class);
+        self::assertIsArray($session->get('backupCodes'));
+
+        // Non-code-based method (e.g. WebAuthn): the raw request body is the assertion payload.
         $user = $this->createUser();
         $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'webauthn');
         $method = new FakeTwoFactorMethod(name: 'webauthn', codeBased: false, verifyResult: true);
@@ -374,12 +391,39 @@ final class TwoFactorControllerTest extends TestCase
 
         $response = $controller->regenerateBackupCodes($this->postBody('{"assertion":"ok"}'), '');
 
-        self::assertSame(200, $response->getStatusCode());
+        self::assertSame(302, $response->getStatusCode());
+        self::assertSame('//voyti/user-two-factor-backup-codes', $response->getHeaderLine('Location'));
         self::assertSame(['payload' => '{"assertion":"ok"}', 'domain' => ''], $method->lastVerifyData);
-        self::assertStringContainsString('Backup Codes', (string) $response->getBody());
         /** @var BackupCodeService $backupCodes */
         $backupCodes = $container->get(BackupCodeService::class);
         self::assertTrue($backupCodes->hasUnused($user));
+    }
+
+    public function testShowBackupCodes(): void
+    {
+        $user = $this->createUser();
+        [$container, $controller] = $this->build($user, new FakeTwoFactorMethod(name: 'totp'));
+        /** @var SessionInterface $session */
+        $session = $container->get(SessionInterface::class);
+
+        // Nothing stashed: redirects to the index rather than showing an empty page.
+        $response = $controller->showBackupCodes();
+        self::assertSame(302, $response->getStatusCode());
+        self::assertSame('//voyti/user-two-factor', $response->getHeaderLine('Location'));
+
+        // Codes stashed: shown, and NOT cleared on read - the WebAuthn ceremony's fetch() follows the
+        // regenerate redirect here once (response discarded) before the browser navigates here a
+        // second time for real, and both reads must see the codes.
+        $session->set('backupCodes', ['AAAAAAAAAA', 'BBBBBBBBBB']);
+
+        $first = $controller->showBackupCodes();
+        self::assertSame(200, $first->getStatusCode());
+        self::assertStringContainsString('AAAAAAAAAA', (string) $first->getBody());
+        self::assertSame(['AAAAAAAAAA', 'BBBBBBBBBB'], $session->get('backupCodes'));
+
+        $second = $controller->showBackupCodes();
+        self::assertSame(200, $second->getStatusCode());
+        self::assertStringContainsString('AAAAAAAAAA', (string) $second->getBody());
     }
 
     /**
