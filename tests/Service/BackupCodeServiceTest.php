@@ -40,18 +40,17 @@ final class BackupCodeServiceTest extends TestCase
         self::assertCount(0, UserBackupCode::findUnusedByUserId(1));
     }
 
-    public function testConsumeAcceptsAValidCodeOnceThenRejectsIt(): void
+    public function testConsumeValidatesCodesAndSingleUse(): void
     {
+        // A valid code is accepted exactly once; the second attempt with it fails.
         $user = $this->userWithId(1);
         $codes = $this->service->generate($user, count: 3);
 
         self::assertTrue($this->service->consume($user, $codes[1]));
         self::assertFalse($this->service->consume($user, $codes[1]));
         self::assertCount(2, UserBackupCode::findUnusedByUserId(1));
-    }
 
-    public function testConsumeRejectsUnknownAndEmptyCodes(): void
-    {
+        // Unknown and empty codes are rejected.
         $user = $this->userWithId(1);
         $this->service->generate($user, count: 2);
 
@@ -59,8 +58,10 @@ final class BackupCodeServiceTest extends TestCase
         self::assertFalse($this->service->consume($user, ''));
     }
 
-    public function testGenerateDefaultsToTenTenCharUppercasePersistedCodes(): void
+    public function testGeneratePersistsTenUppercaseHashedCodesAndReplacesExistingOnes(): void
     {
+        // Defaults: ten ten-char uppercase codes persisted for the user; plaintext returned while
+        // only hashes are stored.
         $user = $this->userWithId(1);
 
         $codes = $this->service->generate($user);
@@ -75,31 +76,17 @@ final class BackupCodeServiceTest extends TestCase
         foreach ($stored as $backupCode) {
             self::assertGreaterThan(0, $backupCode->getCreatedAt());
         }
-    }
+        self::assertNotContains($codes[0], array_map(
+            static fn(UserBackupCode $c): string => $c->getCodeHash(),
+            $stored,
+        ));
+        self::assertTrue($this->service->hasUnused($user));
 
-    public function testGenerateReplacesAnyExistingCodes(): void
-    {
-        $user = $this->userWithId(1);
+        // Generating again replaces any previously stored codes.
         $this->service->generate($user, count: 3);
         $this->service->generate($user, count: 2);
 
         self::assertCount(2, UserBackupCode::findUnusedByUserId(1));
-    }
-
-    public function testGenerateStoresHashedCodesAndReturnsPlaintext(): void
-    {
-        $user = $this->userWithId(1);
-
-        $codes = $this->service->generate($user, count: 5);
-
-        self::assertCount(5, $codes);
-        self::assertCount(5, UserBackupCode::findUnusedByUserId(1));
-        // Plaintext returned, hashes stored (not the plaintext).
-        self::assertNotContains($codes[0], array_map(
-            static fn(UserBackupCode $c): string => $c->getCodeHash(),
-            UserBackupCode::findUnusedByUserId(1),
-        ));
-        self::assertTrue($this->service->hasUnused($user));
     }
 
     private function userWithId(int $id): User

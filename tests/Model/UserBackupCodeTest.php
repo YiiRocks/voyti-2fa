@@ -22,9 +22,10 @@ final class UserBackupCodeTest extends TestCase
         $this->tearDownDatabase();
     }
 
-    public function testDefaultValues(): void
+    public function testDefaultsAndPrimaryKey(): void
     {
         $entity = new UserBackupCode();
+        self::assertSame(['user_id', 'code_hash'], $entity->primaryKey());
         self::assertSame(0, $entity->getUserId());
         self::assertSame('', $entity->getCodeHash());
         self::assertNull($entity->getUsedAt());
@@ -72,8 +73,9 @@ final class UserBackupCodeTest extends TestCase
         self::assertSame('unused-hash', $found[0]->getCodeHash());
     }
 
-    public function testMarkUsedFailsWhenAlreadyUsedConcurrently(): void
+    public function testMarkUsedConsumesOnceAndScopesToOwningUser(): void
     {
+        // A code can be marked used only once, even from two concurrently fetched instances.
         $code = new UserBackupCode();
         $code->setUserId(1);
         $code->setCodeHash('race-hash');
@@ -85,10 +87,8 @@ final class UserBackupCodeTest extends TestCase
 
         self::assertTrue($first->markUsed());
         self::assertFalse($second->markUsed());
-    }
 
-    public function testMarkUsedScopesToOwningUser(): void
-    {
+        // Marking used scopes to the owning user: the same hash owned by another user stays unused.
         $ownCode = new UserBackupCode();
         $ownCode->setUserId(1);
         $ownCode->setCodeHash('shared-hash');
@@ -106,11 +106,5 @@ final class UserBackupCodeTest extends TestCase
         $stillUnused = UserBackupCode::query()->where(['user_id' => 2, 'code_hash' => 'shared-hash'])->one();
         self::assertNotNull($stillUnused);
         self::assertNull($stillUnused->getUsedAt());
-    }
-
-    public function testPrimaryKey(): void
-    {
-        $entity = new UserBackupCode();
-        self::assertSame(['user_id', 'code_hash'], $entity->primaryKey());
     }
 }

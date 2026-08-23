@@ -24,9 +24,15 @@ final class UserTwoFactorTest extends TestCase
         $this->tearDownDatabase();
     }
 
-    public function testAccessors(): void
+    public function testAccessorsAndPrimaryKey(): void
     {
         $entity = new UserTwoFactor();
+        self::assertSame(['user_id'], $entity->primaryKey());
+        self::assertSame(0, $entity->getUserId());
+        self::assertFalse($entity->isEnabled());
+        self::assertNull($entity->getSecret());
+        self::assertNull($entity->getMethod());
+
         $entity->setUserId(42);
         $entity->setSecret('s3cr3t');
         $entity->setMethod('totp');
@@ -42,15 +48,6 @@ final class UserTwoFactorTest extends TestCase
         $entity->setSecret(null);
         self::assertNull($entity->getSecret());
         $entity->setMethod(null);
-        self::assertNull($entity->getMethod());
-    }
-
-    public function testDefaultValues(): void
-    {
-        $entity = new UserTwoFactor();
-        self::assertSame(0, $entity->getUserId());
-        self::assertFalse($entity->isEnabled());
-        self::assertNull($entity->getSecret());
         self::assertNull($entity->getMethod());
     }
 
@@ -82,8 +79,9 @@ final class UserTwoFactorTest extends TestCase
         self::assertNull(UserTwoFactor::findByUserId(99));
     }
 
-    public function testForUserReturnsExistingRecord(): void
+    public function testForUser(): void
     {
+        // Returns the existing persisted record.
         $existing = new UserTwoFactor();
         $existing->setUserId(5);
         $existing->setMethod('totp');
@@ -91,19 +89,12 @@ final class UserTwoFactorTest extends TestCase
 
         $found = UserTwoFactor::forUser($this->userWithId(5));
         self::assertSame('totp', $found->getMethod());
-    }
 
-    public function testForUserReturnsFreshRecordBoundToUser(): void
-    {
+        // Returns a fresh record bound to the user when none exists yet.
         $fresh = UserTwoFactor::forUser($this->userWithId(8));
         self::assertSame(8, $fresh->getUserId());
         self::assertNull($fresh->getMethod());
         self::assertFalse($fresh->isEnabled());
-    }
-
-    public function testPrimaryKey(): void
-    {
-        self::assertSame(['user_id'], (new UserTwoFactor())->primaryKey());
     }
 
     private function userWithId(int $id): User

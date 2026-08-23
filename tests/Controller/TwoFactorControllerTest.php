@@ -40,8 +40,22 @@ final class TwoFactorControllerTest extends TestCase
         $this->tearDownDatabase();
     }
 
-    public function testDisableFailureForNonCodeBasedMethodShowsError(): void
+    public function testDisableFailureKeepsTwoFactorEnabledAndShowsError(): void
     {
+        // Code-based method: a wrong code keeps 2FA enabled and shows the error.
+        $user = $this->createUser();
+        $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'totp');
+        $method = new FakeTwoFactorMethod(name: 'totp', errorMessage: 'Bad code.', verifyResult: false);
+        [, $controller] = $this->build($user, $method);
+
+        $response = $controller->disable($this->post(), 'wrong');
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertStringContainsString('Bad code.', (string) $response->getBody());
+        self::assertTrue(UserTwoFactor::forUser($user)->isEnabled());
+        self::assertFalse($method->onDisableCalled);
+
+        // Non-code-based method: a rejected assertion payload behaves the same way.
         $user = $this->createUser();
         $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'webauthn');
         $method = new FakeTwoFactorMethod(name: 'webauthn', codeBased: false, errorMessage: 'No key.', verifyResult: false);
@@ -55,27 +69,18 @@ final class TwoFactorControllerTest extends TestCase
         self::assertFalse($method->onDisableCalled);
     }
 
-    public function testDisableFailureKeepsTwoFactorEnabledAndShowsError(): void
-    {
-        $user = $this->createUser();
-        $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'totp');
-        $method = new FakeTwoFactorMethod(name: 'totp', errorMessage: 'Bad code.', verifyResult: false);
-        [$container, $controller] = $this->build($user, $method);
-
-        $response = $controller->disable($this->post(), 'wrong');
-
-        self::assertSame(200, $response->getStatusCode());
-        self::assertStringContainsString('Bad code.', (string) $response->getBody());
-        self::assertTrue(UserTwoFactor::forUser($user)->isEnabled());
-        self::assertFalse($method->onDisableCalled);
-    }
-
     public function testDisableSendCode(): void
     {
         $user = $this->createUser();
-        $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'email');
 
-        // Not requiring code delivery: no send step, straight redirect.
+        // 2FA not enabled: redirect to the index regardless of delivery requirement.
+        [, $controller] = $this->build($user, new FakeTwoFactorMethod(name: 'email', codeDelivery: true));
+        $response = $controller->disableSendCode();
+        self::assertSame(302, $response->getStatusCode());
+        self::assertSame('//voyti/user-two-factor', $response->getHeaderLine('Location'));
+
+        // Not requiring code delivery: no send step, straight redirect without starting the step.
+        $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'email');
         $onDemand = new FakeTwoFactorMethod(name: 'email', codeDelivery: false);
         [, $controller] = $this->build($user, $onDemand);
         $response = $controller->disableSendCode();
@@ -94,24 +99,13 @@ final class TwoFactorControllerTest extends TestCase
         self::assertStringNotContainsString('user-two-factor-disable-send-code', $body);
     }
 
-    public function testDisableSendCodeRedirectsWhenNotEnabled(): void
+    public function testDisableSuccessDisablesTwoFactor(): void
     {
-        $user = $this->createUser();
-        [, $controller] = $this->build($user, new FakeTwoFactorMethod(name: 'email', codeDelivery: true));
-
-        $response = $controller->disableSendCode();
-
-        self::assertSame(302, $response->getStatusCode());
-        self::assertSame('//voyti/user-two-factor', $response->getHeaderLine('Location'));
-    }
-
-    public function testDisableSuccessViaBackupCode(): void
-    {
+        // Via backup code: the remaining backup codes are wiped along with the 2FA state.
         $user = $this->createUser();
         $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'totp');
         $method = new FakeTwoFactorMethod(name: 'totp', verifyResult: false);
         [$container, $controller] = $this->build($user, $method);
-
         /** @var BackupCodeService $backupCodes */
         $backupCodes = $container->get(BackupCodeService::class);
         $codes = $backupCodes->generate($user);
@@ -125,10 +119,8 @@ final class TwoFactorControllerTest extends TestCase
         self::assertFalse($twoFactor->isEnabled());
         self::assertNull($twoFactor->getMethod());
         self::assertFalse($backupCodes->hasUnused($user));
-    }
 
-    public function testDisableSuccessViaMethodCode(): void
-    {
+        // Via method code: the stored secret is cleared and a success flash is shown.
         $user = $this->createUser();
         $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'totp', secret: 'STORED-SECRET');
         $method = new FakeTwoFactorMethod(name: 'totp', verifyResult: true);
@@ -147,10 +139,10 @@ final class TwoFactorControllerTest extends TestCase
             'Two-factor authentication has been disabled',
             $container->get(FlashInterface::class)->get('success'),
         );
-    }
 
-    public function testDisableSuccessViaPayloadForNonCodeBasedMethod(): void
-    {
+        // Via raw payload for a client-collected method: the request body is forwarded to the
+        // method as the assertion payload (with the request host for the relying-party id); no code
+        // needed.
         $user = $this->createUser();
         $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'webauthn');
         $method = new FakeTwoFactorMethod(name: 'webauthn', codeBased: false, verifyResult: true);
@@ -160,14 +152,13 @@ final class TwoFactorControllerTest extends TestCase
 
         self::assertSame(302, $response->getStatusCode());
         self::assertTrue($method->onDisableCalled);
-        // The raw request body is forwarded to the method as the assertion payload (with the request
-        // host for the relying-party id); no code needed.
         self::assertSame(['payload' => '{"assertion":"ok"}', 'domain' => ''], $method->lastVerifyData);
         self::assertFalse(UserTwoFactor::forUser($user)->isEnabled());
     }
 
-    public function testEnableAlreadyEnabledRedirectsWithFlash(): void
+    public function testEnableGuardsRedirectToIndex(): void
     {
+        // Already enabled: redirect back with the "enabled" flash instead of re-enabling.
         $user = $this->createUser();
         $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'totp');
         [$container, $controller] = $this->build($user, new FakeTwoFactorMethod(name: 'totp'));
@@ -180,23 +171,33 @@ final class TwoFactorControllerTest extends TestCase
             'Two-factor authentication has been enabled',
             $container->get(FlashInterface::class)->get('success'),
         );
-    }
 
-    public function testEnableNonCodeBasedMethodRedirects(): void
-    {
+        // Non-code-based method: enabling happens through its own setup flow; still disabled here.
         $user = $this->createUser();
-        $method = new FakeTwoFactorMethod(name: 'webauthn', codeBased: false);
-        [, $controller] = $this->build($user, $method);
+        [, $controller] = $this->build($user, new FakeTwoFactorMethod(name: 'webauthn', codeBased: false));
 
         $response = $controller->enable('webauthn', '');
 
         self::assertSame(302, $response->getStatusCode());
         self::assertSame('//voyti/user-two-factor', $response->getHeaderLine('Location'));
         self::assertFalse(UserTwoFactor::forUser($user)->isEnabled());
+
+        // Base package installed without any method package: enable can't fall back to a default,
+        // so it redirects to the index rather than letting getDefault() throw.
+        $user = $this->createUser();
+        [, $controller] = $this->buildWith($user, []);
+
+        $response = $controller->enable('', '');
+
+        self::assertSame(302, $response->getStatusCode());
+        self::assertSame('//voyti/user-two-factor', $response->getHeaderLine('Location'));
+        self::assertFalse(UserTwoFactor::forUser($user)->isEnabled());
     }
 
-    public function testEnableSuccessStoresMethodAndShowsBackupCodes(): void
+    public function testEnableVerifiesCodeBeforeEnabling(): void
     {
+        // Success: an unknown method name falls back to the registered default; the method is
+        // stored and backup codes are generated and revealed.
         $user = $this->createUser();
         $method = new FakeTwoFactorMethod(name: 'totp', verifyResult: true);
         [$container, $controller] = $this->build($user, $method);
@@ -214,10 +215,9 @@ final class TwoFactorControllerTest extends TestCase
         /** @var BackupCodeService $backupCodes */
         $backupCodes = $container->get(BackupCodeService::class);
         self::assertTrue($backupCodes->hasUnused($user));
-    }
 
-    public function testEnableVerificationFailureShowsError(): void
-    {
+        // Failure: an empty method error falls back to the package's generic validator message;
+        // 2FA stays disabled.
         $user = $this->createUser();
         $method = new FakeTwoFactorMethod(name: 'totp', errorMessage: '', verifyResult: false);
         [, $controller] = $this->build($user, $method);
@@ -225,22 +225,7 @@ final class TwoFactorControllerTest extends TestCase
         $response = $controller->enable('totp', 'wrong');
 
         self::assertSame(200, $response->getStatusCode());
-        // Empty method error falls back to the package's generic validator message.
         self::assertStringContainsString('verification code', (string) $response->getBody());
-        self::assertFalse(UserTwoFactor::forUser($user)->isEnabled());
-    }
-
-    public function testEnableWithNoAvailableMethodsRedirects(): void
-    {
-        // Base package installed without any method package: enable can't fall back to a default, so
-        // it redirects to the index rather than letting getDefault() throw.
-        $user = $this->createUser();
-        [, $controller] = $this->buildWith($user, []);
-
-        $response = $controller->enable('', '');
-
-        self::assertSame(302, $response->getStatusCode());
-        self::assertSame('//voyti/user-two-factor', $response->getHeaderLine('Location'));
         self::assertFalse(UserTwoFactor::forUser($user)->isEnabled());
     }
 
@@ -258,8 +243,28 @@ final class TwoFactorControllerTest extends TestCase
         self::assertNull($session->get('backupCodes'));
     }
 
-    public function testIndexEnabledResolvesStoredMethodOverDefault(): void
+    public function testIndexWhenEnabled(): void
     {
+        // Shows the disable form.
+        $user = $this->createUser();
+        $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'totp');
+        [, $controller] = $this->build($user, new FakeTwoFactorMethod(name: 'totp'));
+
+        $response = $controller->index();
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertStringContainsString('//voyti/user-two-factor-disable', (string) $response->getBody());
+
+        // A code-delivery method that hasn't delivered a code yet shows the "send a code" pre-step.
+        $user = $this->createUser();
+        $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'email');
+        [, $controller] = $this->build($user, new FakeTwoFactorMethod(name: 'email', codeDelivery: true));
+
+        $response = $controller->index();
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertStringContainsString('user-two-factor-disable-send-code', (string) $response->getBody());
+
         // Two methods registered; the user's stored method is the non-default one. The index must
         // resolve the stored method, not fall back to the default (the first registered).
         $user = $this->createUser();
@@ -273,24 +278,9 @@ final class TwoFactorControllerTest extends TestCase
 
         self::assertSame(200, $response->getStatusCode());
         self::assertStringContainsString('Security Key', (string) $response->getBody());
-    }
 
-    public function testIndexEnabledShowsDisableForm(): void
-    {
-        $user = $this->createUser();
-        $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'totp');
-        [, $controller] = $this->build($user, new FakeTwoFactorMethod(name: 'totp'));
-
-        $response = $controller->index();
-
-        self::assertSame(200, $response->getStatusCode());
-        self::assertStringContainsString('//voyti/user-two-factor-disable', (string) $response->getBody());
-    }
-
-    public function testIndexEnabledUnregisteredStoredMethodFallsBackToDefault(): void
-    {
-        // The stored method is no longer registered (its package was removed); the index falls back
-        // to the default method rather than erroring.
+        // The stored method is no longer registered (its package was removed): falls back to the
+        // default method rather than erroring.
         $user = $this->createUser();
         $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'gone');
         [, $controller] = $this->build($user, new FakeTwoFactorMethod(name: 'totp'));
@@ -300,21 +290,9 @@ final class TwoFactorControllerTest extends TestCase
         self::assertSame(200, $response->getStatusCode());
     }
 
-    public function testIndexEnabledWithCodeDeliveryShowsSendCodeStep(): void
+    public function testIndexWhenNotEnabled(): void
     {
-        // A code-delivery method that hasn't delivered a code yet shows the "send a code" pre-step.
-        $user = $this->createUser();
-        $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'email');
-        [, $controller] = $this->build($user, new FakeTwoFactorMethod(name: 'email', codeDelivery: true));
-
-        $response = $controller->index();
-
-        self::assertSame(200, $response->getStatusCode());
-        self::assertStringContainsString('user-two-factor-disable-send-code', (string) $response->getBody());
-    }
-
-    public function testIndexNotEnabledShowsMethodButtons(): void
-    {
+        // Shows the registered methods as switch buttons.
         $user = $this->createUser();
         $method = new FakeTwoFactorMethod(name: 'totp', buttonLabel: 'Authenticator app');
         [, $controller] = $this->build($user, $method);
@@ -324,12 +302,9 @@ final class TwoFactorControllerTest extends TestCase
         self::assertSame(200, $response->getStatusCode());
         self::assertStringContainsString('Authenticator app', (string) $response->getBody());
         self::assertStringContainsString('data-voyti-2fa-method="totp"', (string) $response->getBody());
-    }
 
-    public function testIndexNotEnabledWithNoAvailableMethodsShowsUnavailableNotice(): void
-    {
-        // Base package installed without any method package: the index degrades to a notice instead
-        // of a 500 from getDefault().
+        // Base package installed without any method package: degrades to a notice instead of a 500
+        // from getDefault().
         $user = $this->createUser();
         [, $controller] = $this->buildWith($user, []);
 
@@ -339,8 +314,18 @@ final class TwoFactorControllerTest extends TestCase
         self::assertStringContainsString('no authentication methods are installed', (string) $response->getBody());
     }
 
-    public function testRegenerateBackupCodesFailureShowsError(): void
+    public function testRegenerateBackupCodes(): void
     {
+        // Not enabled: redirect to the index.
+        $user = $this->createUser();
+        [, $controller] = $this->build($user, new FakeTwoFactorMethod(name: 'totp'));
+
+        $response = $controller->regenerateBackupCodes($this->post(), '123456');
+
+        self::assertSame(302, $response->getStatusCode());
+        self::assertSame('//voyti/user-two-factor', $response->getHeaderLine('Location'));
+
+        // Wrong code: re-renders with the method's error.
         $user = $this->createUser();
         $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'totp');
         $method = new FakeTwoFactorMethod(name: 'totp', errorMessage: 'Nope.', verifyResult: false);
@@ -350,21 +335,7 @@ final class TwoFactorControllerTest extends TestCase
 
         self::assertSame(200, $response->getStatusCode());
         self::assertStringContainsString('Nope.', (string) $response->getBody());
-    }
 
-    public function testRegenerateBackupCodesRedirectsWhenNotEnabled(): void
-    {
-        $user = $this->createUser();
-        [, $controller] = $this->build($user, new FakeTwoFactorMethod(name: 'totp'));
-
-        $response = $controller->regenerateBackupCodes($this->post(), '123456');
-
-        self::assertSame(302, $response->getStatusCode());
-        self::assertSame('//voyti/user-two-factor', $response->getHeaderLine('Location'));
-    }
-
-    public function testRegenerateBackupCodesSuccess(): void
-    {
         // Code-based method: the code is passed to the action directly.
         $user = $this->createUser();
         $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'totp');

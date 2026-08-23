@@ -30,8 +30,10 @@ final class TwoFactorLoginChallengeTest extends TestCase
         $this->tearDownDatabase();
     }
 
-    public function testChallengePresentsConfirmationForEnabledMethod(): void
+    public function testChallengeRendersConfirmationScreen(): void
     {
+        // Code-based method: the step hook runs, the confirm screen renders with its code form, and
+        // the pending credentials are stashed for ConfirmController.
         $user = $this->createUser();
         $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'totp');
         $method = new FakeTwoFactorMethod(name: 'totp');
@@ -45,16 +47,14 @@ final class TwoFactorLoginChallengeTest extends TestCase
         self::assertNotNull($response);
         self::assertSame(200, $response->getStatusCode());
         self::assertTrue($method->onAuthenticationStepStartCalled);
-        // The confirm screen renders with its code form (the form + data are passed to the view).
         self::assertStringContainsString('one-time-code', (string) $response->getBody());
         self::assertSame(
             ['login' => 'testuser', 'rememberMe' => true],
             $container->get(SessionInterface::class)->get('credentials'),
         );
-    }
 
-    public function testChallengeRendersClientCollectedMethodFragment(): void
-    {
+        // Client-collected method: renders the fragment loader with the method's fragment URL
+        // embedded in the page JS, not a code form.
         $user = $this->createUser();
         $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'webauthn');
         $method = new FakeTwoFactorMethod(
@@ -72,32 +72,29 @@ final class TwoFactorLoginChallengeTest extends TestCase
         self::assertNotNull($response);
         self::assertSame(200, $response->getStatusCode());
         $body = (string) $response->getBody();
-        // Client-collected methods render the fragment loader with the method's fragment URL
-        // embedded in the page JS, not a code form.
         self::assertStringContainsString('voyti-session-confirm-method', $body);
         self::assertStringContainsString('confirm-fragment', $body);
         self::assertStringNotContainsString('one-time-code', $body);
     }
 
-    public function testChallengeReturnsNullWhenMethodNotRegistered(): void
+    public function testChallengeReturnsNullWhenConfirmationNotNeeded(): void
     {
+        // 2FA disabled for the user: no challenge.
         $user = $this->createUser();
-        $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'totp');
         $container = $this->createTestContainer([
-            TwoFactorMethodRegistry::class => new TwoFactorMethodRegistry([new FakeTwoFactorMethod(name: 'email')]),
+            TwoFactorMethodRegistry::class => new TwoFactorMethodRegistry([new FakeTwoFactorMethod(name: 'totp')]),
         ]);
 
         $response = $container->get(TwoFactorLoginChallenge::class)
             ->challenge($user, false, new ServerRequest('POST', '/'));
 
         self::assertNull($response);
-    }
 
-    public function testChallengeReturnsNullWhenTwoFactorDisabled(): void
-    {
+        // The stored method is no longer registered: no challenge.
         $user = $this->createUser();
+        $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'totp');
         $container = $this->createTestContainer([
-            TwoFactorMethodRegistry::class => new TwoFactorMethodRegistry([new FakeTwoFactorMethod(name: 'totp')]),
+            TwoFactorMethodRegistry::class => new TwoFactorMethodRegistry([new FakeTwoFactorMethod(name: 'email')]),
         ]);
 
         $response = $container->get(TwoFactorLoginChallenge::class)

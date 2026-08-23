@@ -53,6 +53,12 @@ final class TwoFactorAuthenticationEnforceMiddlewareTest extends TestCase
         yield 'two factor' => ['voyti/user-two-factor-enable'];
     }
 
+    public static function flashConfiguredProvider(): iterable
+    {
+        yield 'flash service configured' => [true];
+        yield 'no flash service wired' => [false];
+    }
+
     public function testProcessDoesNotQueryRbacWhenNoForcedPermissions(): void
     {
         $authManager = $this->createMock(ManagerInterface::class);
@@ -148,6 +154,7 @@ final class TwoFactorAuthenticationEnforceMiddlewareTest extends TestCase
 
     public function testProcessPassesThroughWhenUserLacksRequiredPermissions(): void
     {
+        // A user whose RBAC permissions don't include any forced permission passes through.
         $authManager = $this->createStub(ManagerInterface::class);
         $authManager->method('getPermissionsByUserId')->willReturn(['editor' => new Permission('editor')]);
 
@@ -159,60 +166,8 @@ final class TwoFactorAuthenticationEnforceMiddlewareTest extends TestCase
         $middleware = $this->middleware(authManager: $authManager, forcedPermissions: ['admin']);
 
         self::assertSame($response, $middleware->process($request, $handler));
-    }
 
-    public function testProcessRedirectsWhenUserHasRequiredPermissionBut2FANotEnabled(): void
-    {
-        $authManager = $this->createMock(ManagerInterface::class);
-        $authManager->expects(self::once())->method('getPermissionsByUserId')->with(42)
-            ->willReturn(['admin' => new Permission('admin')]);
-
-        $flash = $this->createMock(FlashInterface::class);
-        $flash->expects(self::once())->method('set')->with(
-            FlashType::WARNING,
-            'Two-factor authentication is required for your account. Please enable it to continue.',
-        );
-
-        $handler = $this->createMock(RequestHandlerInterface::class);
-        $handler->expects(self::never())->method('handle');
-
-        $middleware = $this->middleware(
-            authManager: $authManager,
-            currentRoute: $this->createCurrentRoute('voyti/admin'),
-            forcedPermissions: ['admin'],
-            flash: $flash,
-        );
-
-        $response = $middleware->process(new ServerRequest('GET', '/'), $handler);
-
-        self::assertSame(302, $response->getStatusCode());
-        self::assertSame('//voyti/user-two-factor', $response->getHeaderLine('Location'));
-    }
-
-    public function testProcessRedirectsWithoutFlashServiceConfigured(): void
-    {
-        $authManager = $this->createStub(ManagerInterface::class);
-        $authManager->method('getPermissionsByUserId')->willReturn(['admin' => new Permission('admin')]);
-
-        $handler = $this->createMock(RequestHandlerInterface::class);
-        $handler->expects(self::never())->method('handle');
-
-        // No flash service wired: the redirect must still happen, the flash call simply skipped.
-        $middleware = $this->middleware(
-            authManager: $authManager,
-            currentRoute: $this->createCurrentRoute('voyti/admin'),
-            forcedPermissions: ['admin'],
-            flash: null,
-        );
-
-        $response = $middleware->process(new ServerRequest('GET', '/'), $handler);
-
-        self::assertSame(302, $response->getStatusCode());
-        self::assertSame('//voyti/user-two-factor', $response->getHeaderLine('Location'));
-    }
-
-    public function testProcessWithUserIdZeroQueriesPermissionsForZero(): void
-    {
+        // A user id of zero still queries RBAC - with zero - and passes through when nothing matches.
         $authManager = $this->createMock(ManagerInterface::class);
         $authManager->expects(self::once())->method('getPermissionsByUserId')->with(0)->willReturn([]);
 
@@ -228,6 +183,38 @@ final class TwoFactorAuthenticationEnforceMiddlewareTest extends TestCase
         );
 
         self::assertSame($response, $middleware->process($request, $handler));
+    }
+
+    #[DataProvider('flashConfiguredProvider')]
+    public function testProcessRedirectsWhenUserHasRequiredPermissionBut2FANotEnabled(bool $flashConfigured): void
+    {
+        $authManager = $this->createMock(ManagerInterface::class);
+        $authManager->expects(self::once())->method('getPermissionsByUserId')->with(42)
+            ->willReturn(['admin' => new Permission('admin')]);
+
+        $flash = null;
+        if ($flashConfigured) {
+            $flash = $this->createMock(FlashInterface::class);
+            $flash->expects(self::once())->method('set')->with(
+                FlashType::WARNING,
+                'Two-factor authentication is required for your account. Please enable it to continue.',
+            );
+        }
+
+        $handler = $this->createMock(RequestHandlerInterface::class);
+        $handler->expects(self::never())->method('handle');
+
+        $middleware = $this->middleware(
+            authManager: $authManager,
+            currentRoute: $this->createCurrentRoute('voyti/admin'),
+            forcedPermissions: ['admin'],
+            flash: $flash,
+        );
+
+        $response = $middleware->process(new ServerRequest('GET', '/'), $handler);
+
+        self::assertSame(302, $response->getStatusCode());
+        self::assertSame('//voyti/user-two-factor', $response->getHeaderLine('Location'));
     }
 
     private function currentUser(IdentityInterface $identity): CurrentUser

@@ -67,46 +67,37 @@ final class ConfirmControllerTest extends TestCase
         self::assertNull($container->get(SessionInterface::class)->get('credentials'));
     }
 
-    public function testConfirmCodeVerificationFailureShowsError(): void
+    public function testConfirmFailureRerendersFormWithError(): void
     {
-        $user = $this->createUser();
+        // Empty form input fails validation and re-renders.
+        $user = $this->createUser(username: 'validation-user');
+        $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'totp');
+        [, $controller] = $this->build(new FakeTwoFactorMethod(name: 'totp'), 'validation-user');
+        $response = $controller->confirm($this->postConfirm(''));
+        self::assertSame(200, $response->getStatusCode());
+
+        // Failed verification with the generic error message: it is bound to the code field, so it
+        // renders both in the summary and under the field itself (two occurrences) - not only in
+        // the summary.
+        $user = $this->createUser(username: 'generic-error-user');
         $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'totp');
         $method = new FakeTwoFactorMethod(name: 'totp', errorMessage: '', verifyResult: false);
-        [$container, $controller] = $this->build($method, 'testuser');
-
+        [$container, $controller] = $this->build($method, 'generic-error-user');
         $response = $controller->confirm($this->postConfirm('000000'));
-
         $body = (string) $response->getBody();
         self::assertSame(200, $response->getStatusCode());
-        // The error is bound to the code field, so it renders both in the summary and under the
-        // field itself (two occurrences) - not only in the summary.
         self::assertSame(2, substr_count($body, 'Invalid verification code.'));
         // Failed confirmation leaves the pending credentials in place for a retry.
         self::assertNotNull($container->get(SessionInterface::class)->get('credentials'));
-    }
 
-    public function testConfirmCustomMethodErrorShown(): void
-    {
-        $user = $this->createUser();
+        // Failed verification shows the method's custom error instead of the generic one.
+        $user = $this->createUser(username: 'custom-error-user');
         $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'totp');
         $method = new FakeTwoFactorMethod(name: 'totp', errorMessage: 'Custom TOTP error.', verifyResult: false);
-        [, $controller] = $this->build($method, 'testuser');
-
+        [, $controller] = $this->build($method, 'custom-error-user');
         $response = $controller->confirm($this->postConfirm('000000'));
-
         self::assertSame(200, $response->getStatusCode());
         self::assertStringContainsString('Custom TOTP error.', (string) $response->getBody());
-    }
-
-    public function testConfirmInvalidFormRerenders(): void
-    {
-        $user = $this->createUser();
-        $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'totp');
-        [, $controller] = $this->build(new FakeTwoFactorMethod(name: 'totp'), 'testuser');
-
-        $response = $controller->confirm($this->postConfirm(''));
-
-        self::assertSame(200, $response->getStatusCode());
     }
 
     public function testConfirmRedirectsToLoginWithoutStashedCredentials(): void
@@ -134,15 +125,36 @@ final class ConfirmControllerTest extends TestCase
 
         self::assertSame(302, $response->getStatusCode());
         self::assertNull($container->get(SessionInterface::class)->get('credentials'));
+
+        // Unknown login falls back to rendering the default method rather than erroring.
+        [, $controller] = $this->build(new FakeTwoFactorMethod(name: 'totp'), 'ghost');
+
+        $response = $controller->confirm($this->postConfirm('123456'));
+
+        self::assertSame(200, $response->getStatusCode());
     }
 
-    public function testConfirmSuccessViaBackupCode(): void
+    public function testConfirmSuccessCompletesLogin(): void
     {
-        $user = $this->createUser();
+        // Via method code; rememberMe stashed as true issues the autoLogin cookie and the stashed
+        // credentials are consumed.
+        $user = $this->createUser(username: 'remember-user');
+        $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'totp');
+        $method = new FakeTwoFactorMethod(name: 'totp', verifyResult: true);
+        [$container, $controller] = $this->build($method, 'remember-user', rememberMe: true);
+
+        $response = $controller->confirm($this->postConfirm('123456'));
+
+        self::assertSame(302, $response->getStatusCode());
+        self::assertSame(['code' => '123456'], $method->lastVerifyData);
+        self::assertNull($container->get(SessionInterface::class)->get('credentials'));
+        self::assertStringContainsString('autoLogin', $response->getHeaderLine('Set-Cookie'));
+
+        // Via backup code when the method itself rejects the typed code.
+        $user = $this->createUser(username: 'backup-code-user');
         $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'totp');
         $method = new FakeTwoFactorMethod(name: 'totp', verifyResult: false);
-        [$container, $controller] = $this->build($method, 'testuser');
-
+        [$container, $controller] = $this->build($method, 'backup-code-user');
         /** @var BackupCodeService $backupCodes */
         $backupCodes = $container->get(BackupCodeService::class);
         $codes = $backupCodes->generate($user);
@@ -151,40 +163,13 @@ final class ConfirmControllerTest extends TestCase
 
         self::assertSame(302, $response->getStatusCode());
         self::assertNull($container->get(SessionInterface::class)->get('credentials'));
-    }
 
-    public function testConfirmSuccessViaMethodCode(): void
-    {
-        $user = $this->createUser();
-        $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'totp');
-        $method = new FakeTwoFactorMethod(name: 'totp', verifyResult: true);
-        [$container, $controller] = $this->build($method, 'testuser', rememberMe: true);
-
-        $response = $controller->confirm($this->postConfirm('123456'));
-
-        self::assertSame(302, $response->getStatusCode());
-        self::assertSame(['code' => '123456'], $method->lastVerifyData);
-        self::assertNull($container->get(SessionInterface::class)->get('credentials'));
-        // rememberMe stashed as true issues the autoLogin cookie.
-        self::assertStringContainsString('autoLogin', $response->getHeaderLine('Set-Cookie'));
-    }
-
-    public function testConfirmUnknownLoginRendersDefaultMethod(): void
-    {
-        [, $controller] = $this->build(new FakeTwoFactorMethod(name: 'totp'), 'ghost');
-
-        $response = $controller->confirm($this->postConfirm('123456'));
-
-        self::assertSame(200, $response->getStatusCode());
-    }
-
-    public function testConfirmWithoutStashedRememberMeIssuesNoCookie(): void
-    {
-        $user = $this->createUser();
+        // Credentials stashed without a rememberMe key default to "do not remember": no cookie.
+        $user = $this->createUser(username: 'plain-user');
         $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'totp');
         [$container, $controller] = $this->build(new FakeTwoFactorMethod(name: 'totp', verifyResult: true), stashLogin: null);
         // Stash credentials with no rememberMe key: the default must be "do not remember".
-        $container->get(SessionInterface::class)->set('credentials', ['login' => 'testuser']);
+        $container->get(SessionInterface::class)->set('credentials', ['login' => 'plain-user']);
 
         $response = $controller->confirm($this->postConfirm('123456'));
 
