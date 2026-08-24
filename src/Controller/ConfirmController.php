@@ -121,7 +121,7 @@ final readonly class ConfirmController
     {
         $this->session->remove(self::SESSION_KEY_CREDENTIALS);
 
-        return $this->loginCompletionService->complete($user, $this->boolValue($credentials, 'rememberMe'), $request);
+        return $this->loginCompletionService->finalize($user, $this->boolValue($credentials, 'rememberMe'), $request);
     }
 
     private function redirect(string $url): ResponseInterface

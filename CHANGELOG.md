@@ -2,7 +2,7 @@
 
 ## 1.0.2 under development
 
-- No changes in this release.
+- Avoid double-dispatching `BeforeLoginEvent` by calling `LoginCompletionService::finalize()` instead of `::complete()` when completing a 2FA-confirmed login.
 
 ## 1.0.1 - August 21, 2026
 
