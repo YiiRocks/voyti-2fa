@@ -1,4 +1,4 @@
-# Yii Voyti Change Log
+# Yii3 Voyti 2FA Changelog
 
 ## 1.0.2 under development
 

@@ -1,6 +1,6 @@
-# Voyti 2FA — Two-Factor Authentication for Voyti
+# Voyti 2FA
 
-The two-factor authentication base package for [Voyti](https://github.com/YiiRocks/voyti), the Yii3 user-management extension. It carries the whole 2FA subsystem: data, login-confirmation flow, settings screen, backup codes, and per-permission enforcement.
+Two-factor authentication base package for [Voyti](https://github.com/YiiRocks/voyti), the Yii3 user-management extension.
 
 [![Packagist Version](https://img.shields.io/packagist/v/yiirocks/voyti-2fa.svg)](https://packagist.org/packages/yiirocks/voyti-2fa)
 [![PHP from Packagist](https://img.shields.io/packagist/php-v/yiirocks/voyti-2fa.svg)](https://php.net/)
@@ -14,10 +14,6 @@ Stats for Nerds
 [![MSI](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fyiirocks%2Fvoyti-2fa%2Fbadges%2Fmsi.json)](https://github.com/yiirocks/voyti-2fa/tree/badges)
 [![Tests](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fyiirocks%2Fvoyti-2fa%2Fbadges%2Ftests.json)](https://github.com/yiirocks/voyti-2fa/tree/badges)
 [![Assertions](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fyiirocks%2Fvoyti-2fa%2Fbadges%2Fassertions.json)](https://github.com/yiirocks/voyti-2fa/tree/badges)
-
-## Overview
-
-Two-factor authentication is pluggable in Voyti: this base package provides the machinery, and each **method** (email, TOTP, WebAuthn) ships as its own small package on top of it. 2FA becomes active as soon as a method package is installed. It hooks into core's login flow through the `voyti.login-challenge` seam and auto-joins the enforcement middleware chain via the `voyti.enforce-middleware` tag.
 
 ## Installation
 
