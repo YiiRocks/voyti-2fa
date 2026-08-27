@@ -17,6 +17,7 @@ use YiiRocks\Voyti\TwoFactor\Form\TwoFactorCodeForm;
 use YiiRocks\Voyti\TwoFactor\Helper\Views\IndexView;
 use YiiRocks\Voyti\TwoFactor\Model\UserTwoFactor;
 use YiiRocks\Voyti\TwoFactor\Service\BackupCodeService;
+use YiiRocks\Voyti\TwoFactor\Service\TwoFactorDisableService;
 use YiiRocks\Voyti\TwoFactor\TwoFactorMethodInterface;
 use YiiRocks\Voyti\TwoFactor\TwoFactorMethodRegistry;
 use YiiRocks\Voyti\VoytiConfig;
@@ -52,6 +53,7 @@ final readonly class TwoFactorController
         private FlashNotifier $flashNotifier,
         private BackupCodeService $backupCodeService,
         private TwoFactorMethodRegistry $twoFactorMethods,
+        private TwoFactorDisableService $twoFactorDisableService,
     ) {}
 
     public function disable(ServerRequestInterface $request, #[Body('code')] string $code = ''): ResponseInterface
@@ -73,12 +75,7 @@ final readonly class TwoFactorController
             );
         }
 
-        $method->onDisable($user);
-        $twoFactor->setEnabled(false);
-        $twoFactor->setSecret(null);
-        $twoFactor->setMethod(null);
-        $twoFactor->save();
-        $this->backupCodeService->clear($user);
+        $this->twoFactorDisableService->disable($user);
 
         return $this->flashRedirect('voyti-2fa.settings.two_factor_disabled');
     }

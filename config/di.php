@@ -5,6 +5,7 @@ declare(strict_types=1);
 use YiiRocks\Voyti\TwoFactor\Auth\TwoFactorLoginChallenge;
 use YiiRocks\Voyti\TwoFactor\Middleware\TwoFactorAuthenticationEnforceMiddleware;
 use YiiRocks\Voyti\TwoFactor\Service\BackupCodeService;
+use YiiRocks\Voyti\TwoFactor\Service\TwoFactorDisableService;
 use YiiRocks\Voyti\TwoFactor\TwoFactorMethodRegistry;
 use Yiisoft\Definitions\Reference;
 use Yiisoft\Security\PasswordHasher;
@@ -19,6 +20,9 @@ return [
     BackupCodeService::class => static fn(): BackupCodeService => new BackupCodeService(
         new PasswordHasher(PASSWORD_BCRYPT, ['cost' => 6]),
     ),
+
+    // Shared disable logic used by both the settings controller and the `voyti:2fa:disable` command.
+    TwoFactorDisableService::class => TwoFactorDisableService::class,
 
     // Every method package tags its provider `voyti.two-factor-method`; the registry collects them.
     TwoFactorMethodRegistry::class => [
