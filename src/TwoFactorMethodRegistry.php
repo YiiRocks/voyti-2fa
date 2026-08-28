@@ -11,32 +11,30 @@ use LogicException;
  * Holds every registered two-factor method keyed by {@see TwoFactorMethodInterface::getName()}.
  * Built from all services tagged `voyti.two-factor-method` in the DI container, so method packages
  * add methods by tagging their own providers rather than overriding this class.
+ *
+ * The given iterable is resolved lazily, on first lookup, not in the constructor.
  */
 final class TwoFactorMethodRegistry
 {
-    /** @var array<string, TwoFactorMethodInterface> */
-    private array $methods = [];
+    /** @var array<string, TwoFactorMethodInterface>|null */
+    private ?array $resolvedMethods = null;
 
     /**
      * @param iterable<TwoFactorMethodInterface> $methods
      */
-    public function __construct(iterable $methods = [])
-    {
-        foreach ($methods as $method) {
-            $this->methods[$method->getName()] = $method;
-        }
-    }
+    public function __construct(private readonly iterable $methods = []) {}
 
     /**
      * @throws InvalidArgumentException if no method with the given name is registered
      */
     public function get(string $name): TwoFactorMethodInterface
     {
-        if (!isset($this->methods[$name])) {
+        $methods = $this->resolveMethods();
+        if (!isset($methods[$name])) {
             throw new InvalidArgumentException(sprintf('Unknown two-factor method "%s".', $name));
         }
 
-        return $this->methods[$name];
+        return $methods[$name];
     }
 
     /**
@@ -45,7 +43,7 @@ final class TwoFactorMethodRegistry
     public function getAvailable(): array
     {
         return array_values(array_filter(
-            $this->methods,
+            $this->resolveMethods(),
             static fn(TwoFactorMethodInterface $method): bool => $method->isAvailable(),
         ));
     }
@@ -68,7 +66,7 @@ final class TwoFactorMethodRegistry
 
     public function has(?string $name): bool
     {
-        return $name !== null && isset($this->methods[$name]);
+        return $name !== null && isset($this->resolveMethods()[$name]);
     }
 
     /**
@@ -79,5 +77,20 @@ final class TwoFactorMethodRegistry
     public function hasAvailable(): bool
     {
         return $this->getAvailable() !== [];
+    }
+
+    /**
+     * @return array<string, TwoFactorMethodInterface>
+     */
+    private function resolveMethods(): array
+    {
+        if ($this->resolvedMethods === null) {
+            $this->resolvedMethods = [];
+            foreach ($this->methods as $method) {
+                $this->resolvedMethods[$method->getName()] = $method;
+            }
+        }
+
+        return $this->resolvedMethods;
     }
 }

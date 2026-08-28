@@ -2,12 +2,14 @@
 
 declare(strict_types=1);
 
+use Psr\Container\ContainerInterface;
 use YiiRocks\Voyti\TwoFactor\Auth\TwoFactorLoginChallenge;
 use YiiRocks\Voyti\TwoFactor\Middleware\TwoFactorAuthenticationEnforceMiddleware;
 use YiiRocks\Voyti\TwoFactor\Service\BackupCodeService;
 use YiiRocks\Voyti\TwoFactor\Service\TwoFactorDisableService;
+use YiiRocks\Voyti\TwoFactor\TwoFactorMethodInterface;
 use YiiRocks\Voyti\TwoFactor\TwoFactorMethodRegistry;
-use Yiisoft\Definitions\Reference;
+use Yiisoft\Di\Reference\TagReference;
 use Yiisoft\Security\PasswordHasher;
 use Yiisoft\Translator\CategorySource;
 use Yiisoft\Translator\Message\Php\MessageSource;
@@ -25,12 +27,14 @@ return [
     TwoFactorDisableService::class => TwoFactorDisableService::class,
 
     // Every method package tags its provider `voyti.two-factor-method`; the registry collects them.
-    TwoFactorMethodRegistry::class => [
-        'class' => TwoFactorMethodRegistry::class,
-        '__construct()' => [
-            'methods' => Reference::to('tag@voyti.two-factor-method'),
-        ],
-    ],
+    // Wrapped in a generator (instead of `Reference::to('tag@...')`) so the tag is only resolved
+    // once a method is actually looked up, not merely when the registry is constructed.
+    TwoFactorMethodRegistry::class => static fn(ContainerInterface $container): TwoFactorMethodRegistry
+        => new TwoFactorMethodRegistry((static function () use ($container): iterable {
+            /** @var iterable<TwoFactorMethodInterface> $methods */
+            $methods = $container->get(TagReference::id('voyti.two-factor-method'));
+            yield from $methods;
+        })()),
 
     // Hook the 2FA confirmation step into the core login flow via the login-challenge seam.
     TwoFactorLoginChallenge::class => [
