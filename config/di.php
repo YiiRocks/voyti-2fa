@@ -27,8 +27,8 @@ return [
     TwoFactorDisableService::class => TwoFactorDisableService::class,
 
     // Every method package tags its provider `voyti.two-factor-method`; the registry collects them.
-    // Wrapped in a generator (instead of `Reference::to('tag@...')`) so the tag is only resolved
-    // once a method is actually looked up, not merely when the registry is constructed.
+    // Wrapped in a generator so the tag is only resolved once a method is actually looked up, not
+    // merely when the registry is constructed.
     TwoFactorMethodRegistry::class => static fn(ContainerInterface $container): TwoFactorMethodRegistry
         => new TwoFactorMethodRegistry((static function () use ($container): iterable {
             /** @var iterable<TwoFactorMethodInterface> $methods */
