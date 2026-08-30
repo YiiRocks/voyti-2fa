@@ -1,5 +1,7 @@
 # Yii3 Voyti 2FA Changelog
 
+## 1.0.3 under development
+
 ## 1.0.2 - August 30, 2026
 
 - New: Add `voyti:2fa:disable` console command to disable two-factor authentication for a user.
