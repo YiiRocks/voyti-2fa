@@ -28,9 +28,7 @@ final class TwoFactorCodeForm extends FormModel implements LabelsProviderInterfa
     ) {}
 
     /**
-     * @return string
-     *
-     * @psalm-return ''
+     * @return ''
      */
     #[Override]
     public function getFormName(): string
@@ -39,9 +37,7 @@ final class TwoFactorCodeForm extends FormModel implements LabelsProviderInterfa
     }
 
     /**
-     * @return string[]
-     *
-     * @psalm-return array{code: string}
+     * @return array{code: string}
      */
     #[Override]
     public function getPropertyLabels(): array

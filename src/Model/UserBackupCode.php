@@ -27,7 +27,7 @@ final class UserBackupCode extends ActiveRecord
     }
 
     /**
-     * @psalm-return list<UserBackupCode>
+     * @return list<UserBackupCode>
      */
     public static function findUnusedByUserId(int $userId): array
     {
@@ -78,7 +78,7 @@ final class UserBackupCode extends ActiveRecord
     }
 
     /**
-     * @psalm-return list{'user_id', 'code_hash'}
+     * @return list{'user_id', 'code_hash'}
      */
     #[Override]
     public function primaryKey(): array

@@ -37,9 +37,7 @@ final class DisableTwoFactorCommand extends Command
     }
 
     /**
-     * @return int
-     *
-     * @psalm-return 0|64|67
+     * @return 0|64|67
      */
     #[Override]
     protected function execute(InputInterface $input, OutputInterface $output): int

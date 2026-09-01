@@ -24,9 +24,7 @@ final class ConfirmForm extends FormModel implements LabelsProviderInterface
     ) {}
 
     /**
-     * @return string
-     *
-     * @psalm-return 'confirm'
+     * @return 'confirm'
      */
     #[Override]
     public function getFormName(): string
@@ -35,9 +33,7 @@ final class ConfirmForm extends FormModel implements LabelsProviderInterface
     }
 
     /**
-     * @return string[]
-     *
-     * @psalm-return array{twoFactorAuthenticationCode: string}
+     * @return array{twoFactorAuthenticationCode: string}
      */
     #[Override]
     public function getPropertyLabels(): array
