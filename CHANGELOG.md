@@ -1,5 +1,7 @@
 # Yii3 Voyti 2FA Changelog
 
+## 1.0.4 under development
+
 ## 1.0.3 - September 2, 2026
 
 - Enh: Count failed two-factor login verifications through the existing authentication event, add atomic email-code attempt and expiry tracking, and group method routes under `2fa.methodRoutes`.
