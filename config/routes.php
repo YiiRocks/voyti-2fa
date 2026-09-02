@@ -23,8 +23,8 @@ $settingsRoutes = [
 ];
 
 // Each installed method package (e.g. yiirocks/voyti-2fa-email) contributes its own setup route(s)
-// via the twoFactorMethodRoutes param; they land inside the settings/ group with the same middleware.
-foreach ($voytiParams['twoFactorMethodRoutes'] ?? [] as $route) {
+// via the 2fa.methodRoutes param; they land inside the settings/ group with the same middleware.
+foreach ($voytiParams['2fa']['methodRoutes'] ?? [] as $route) {
     $settingsRoutes[] = $route;
 }
 

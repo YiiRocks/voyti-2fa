@@ -41,7 +41,7 @@ final class VoytiConfigFactory
         $defaults = array_intersect_key($voytiParams, array_flip($constructorParameters));
 
         if (in_array('twoFactorEnabled', $constructorParameters, true)) {
-            $defaults['twoFactorEnabled'] = ($voytiParams['twoFactorMethodRoutes'] ?? []) !== [];
+            $defaults['twoFactorEnabled'] = ($voytiParams['2fa']['methodRoutes'] ?? []) !== [];
         }
 
         return $defaults;

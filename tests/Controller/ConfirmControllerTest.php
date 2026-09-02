@@ -8,17 +8,27 @@ use Nyholm\Psr7\ServerRequest;
 use Nyholm\Psr7\Stream;
 use PHPUnit\Framework\TestCase;
 use Psr\Container\ContainerInterface;
+use Psr\EventDispatcher\EventDispatcherInterface;
+use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\ServerRequestInterface;
+use YiiRocks\Voyti\Event\Auth\FailedLoginEvent;
+use YiiRocks\Voyti\Service\Auth\LoginCompletionService;
 use YiiRocks\Voyti\TwoFactor\Controller\ConfirmController;
 use YiiRocks\Voyti\TwoFactor\Service\BackupCodeService;
 use YiiRocks\Voyti\TwoFactor\tests\Support\CurrentUserTrait;
 use YiiRocks\Voyti\TwoFactor\tests\Support\DatabaseSetupTrait;
+use YiiRocks\Voyti\TwoFactor\tests\Support\EventCaptureDispatcher;
 use YiiRocks\Voyti\TwoFactor\tests\Support\FakeTwoFactorMethod;
 use YiiRocks\Voyti\TwoFactor\tests\Support\TestContainerTrait;
 use YiiRocks\Voyti\TwoFactor\tests\Support\UserFactoryTrait;
 use YiiRocks\Voyti\TwoFactor\TwoFactorMethodRegistry;
+use YiiRocks\Voyti\VoytiConfig;
+use Yiisoft\FormModel\FormHydrator;
+use Yiisoft\Router\UrlGeneratorInterface;
 use Yiisoft\Session\SessionInterface;
+use Yiisoft\Translator\TranslatorInterface;
 use Yiisoft\User\CurrentUser;
+use Yiisoft\Yii\View\Renderer\WebViewRenderer;
 
 final class ConfirmControllerTest extends TestCase
 {
@@ -58,6 +68,7 @@ final class ConfirmControllerTest extends TestCase
         $body = (string) $response->getBody();
         self::assertStringContainsString('confirm-fragment', $body);
         self::assertStringNotContainsString('one-time-code', $body);
+        $this->assertFailedVerificationRecorded($container, 'testuser');
 
         // Successful payload verification completes login.
         $passing = new FakeTwoFactorMethod(name: 'webauthn', codeBased: false, verifyResult: true);
@@ -89,15 +100,40 @@ final class ConfirmControllerTest extends TestCase
         self::assertSame(2, substr_count($body, 'Invalid verification code.'));
         // Failed confirmation leaves the pending credentials in place for a retry.
         self::assertNotNull($container->get(SessionInterface::class)->get('credentials'));
+        $this->assertFailedVerificationRecorded($container, 'generic-error-user');
 
         // Failed verification shows the method's custom error instead of the generic one.
         $user = $this->createUser(username: 'custom-error-user');
         $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'totp');
         $method = new FakeTwoFactorMethod(name: 'totp', errorMessage: 'Custom TOTP error.', verifyResult: false);
-        [, $controller] = $this->build($method, 'custom-error-user');
+        [$container, $controller] = $this->build($method, 'custom-error-user');
         $response = $controller->confirm($this->postConfirm('000000'));
         self::assertSame(200, $response->getStatusCode());
         self::assertStringContainsString('Custom TOTP error.', (string) $response->getBody());
+        $this->assertFailedVerificationRecorded($container, 'custom-error-user');
+    }
+
+    public function testConfirmFailureWithoutEventDispatcher(): void
+    {
+        $user = $this->createUser(username: 'without-dispatcher');
+        $this->createUserTwoFactor((int) ($user->getId() ?? 0), method: 'totp');
+        [$container] = $this->build(new FakeTwoFactorMethod(name: 'totp', verifyResult: false), 'without-dispatcher');
+        $controller = new ConfirmController(
+            $container->get(TranslatorInterface::class),
+            $container->get(WebViewRenderer::class),
+            $container->get(UrlGeneratorInterface::class),
+            $container->get(VoytiConfig::class),
+            $container->get(ResponseFactoryInterface::class),
+            $container->get(SessionInterface::class),
+            $container->get(FormHydrator::class),
+            $container->get(TwoFactorMethodRegistry::class),
+            $container->get(BackupCodeService::class),
+            $container->get(LoginCompletionService::class),
+        );
+
+        $response = $controller->confirm($this->postConfirm('wrong'));
+
+        self::assertSame(200, $response->getStatusCode());
     }
 
     public function testConfirmRedirectsToLoginWithoutStashedCredentials(): void
@@ -127,11 +163,12 @@ final class ConfirmControllerTest extends TestCase
         self::assertNull($container->get(SessionInterface::class)->get('credentials'));
 
         // Unknown login falls back to rendering the default method rather than erroring.
-        [, $controller] = $this->build(new FakeTwoFactorMethod(name: 'totp'), 'ghost');
+        [$container, $controller] = $this->build(new FakeTwoFactorMethod(name: 'totp'), 'ghost');
 
         $response = $controller->confirm($this->postConfirm('123456'));
 
         self::assertSame(200, $response->getStatusCode());
+        $this->assertFailedVerificationRecorded($container, 'ghost');
     }
 
     public function testConfirmSuccessCompletesLogin(): void
@@ -175,6 +212,18 @@ final class ConfirmControllerTest extends TestCase
 
         self::assertSame(302, $response->getStatusCode());
         self::assertStringNotContainsString('autoLogin', $response->getHeaderLine('Set-Cookie'));
+    }
+
+    private function assertFailedVerificationRecorded(ContainerInterface $container, string $login): void
+    {
+        /** @var EventCaptureDispatcher $eventDispatcher */
+        $eventDispatcher = $container->get(EventDispatcherInterface::class);
+        /** @var ?FailedLoginEvent $event */
+        $event = $eventDispatcher->getEvent(FailedLoginEvent::class);
+
+        self::assertInstanceOf(FailedLoginEvent::class, $event);
+        self::assertSame($login, $event->getEmail());
+        self::assertSame('invalid_two_factor', $event->getReason());
     }
 
     /**

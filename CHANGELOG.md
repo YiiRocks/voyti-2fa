@@ -2,6 +2,8 @@
 
 ## 1.0.3 under development
 
+- Enh: Count failed two-factor login verifications through the existing authentication event, add atomic email-code attempt and expiry tracking, and group method routes under `2fa.methodRoutes`.
+
 ## 1.0.2 - August 30, 2026
 
 - New: Add `voyti:2fa:disable` console command to disable two-factor authentication for a user.

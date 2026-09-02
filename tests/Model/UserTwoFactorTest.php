@@ -97,6 +97,41 @@ final class UserTwoFactorTest extends TestCase
         self::assertFalse($fresh->isEnabled());
     }
 
+    public function testRecordEmailAttemptEnforcesLifespanAndMaximum(): void
+    {
+        $record = new UserTwoFactor();
+        $record->setUserId(5);
+        $record->setSecret('123456');
+        $record->setSecretCreatedAt(time());
+        $record->save();
+
+        $otherRecord = new UserTwoFactor();
+        $otherRecord->setUserId(6);
+        $otherRecord->setSecret('654321');
+        $otherRecord->setSecretCreatedAt(time());
+        $otherRecord->save();
+
+        self::assertTrue($record->recordEmailAttempt(300, 2));
+        self::assertSame(1, $this->secretAttempts($record));
+        self::assertTrue($record->recordEmailAttempt(300, 2));
+        self::assertSame(2, $this->secretAttempts($record));
+        self::assertFalse($record->recordEmailAttempt(300, 2));
+        self::assertTrue($otherRecord->recordEmailAttempt(300, 2));
+
+        $record->setSecretCreatedAt(time() - 301);
+        $record->setSecretAttempts(0);
+        $record->save();
+
+        self::assertFalse($record->recordEmailAttempt(300, 2));
+    }
+
+    private function secretAttempts(UserTwoFactor $record): int
+    {
+        $property = new ReflectionProperty(UserTwoFactor::class, 'secret_attempts');
+
+        return $property->getValue($record);
+    }
+
     private function userWithId(int $id): User
     {
         $user = new User();

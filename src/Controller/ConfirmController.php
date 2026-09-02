@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace YiiRocks\Voyti\TwoFactor\Controller;
 
+use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use YiiRocks\Voyti\Controller\RenderTrait;
+use YiiRocks\Voyti\Event\Auth\FailedLoginEvent;
 use YiiRocks\Voyti\Model\User;
 use YiiRocks\Voyti\Service\Auth\LoginCompletionService;
 use YiiRocks\Voyti\TwoFactor\Auth\TwoFactorLoginChallenge;
@@ -48,6 +50,7 @@ final readonly class ConfirmController
         private TwoFactorMethodRegistry $twoFactorMethods,
         private BackupCodeService $backupCodeService,
         private LoginCompletionService $loginCompletionService,
+        private ?EventDispatcherInterface $eventDispatcher = null,
     ) {}
 
     public function confirm(ServerRequestInterface $request): ResponseInterface
@@ -85,10 +88,15 @@ final readonly class ConfirmController
                             : $this->translator->translate('voyti-2fa.validator.invalid_verification_code', category: 'voyti-2fa'),
                         ['twoFactorAuthenticationCode'],
                     );
+                    $this->recordFailedVerification($request, $login);
                 }
             } elseif ($method->verify($user, ['payload' => (string) $request->getBody(), 'domain' => $request->getUri()->getHost()])) {
                 return $this->completeConfirmation($user, $credentials, $request);
+            } else {
+                $this->recordFailedVerification($request, $login);
             }
+        } else {
+            $this->recordFailedVerification($request, $login);
         }
 
         return $this->renderView('two-factor/confirm', [
@@ -122,6 +130,13 @@ final readonly class ConfirmController
         $this->session->remove(self::SESSION_KEY_CREDENTIALS);
 
         return $this->loginCompletionService->finalize($user, $this->boolValue($credentials, 'rememberMe'), $request);
+    }
+
+    private function recordFailedVerification(ServerRequestInterface $request, string $login): void
+    {
+        $this->eventDispatcher?->dispatch(
+            new FailedLoginEvent($login !== '' ? $login : null, 'invalid_two_factor', $request->getServerParams()),
+        );
     }
 
     private function redirect(string $url): ResponseInterface

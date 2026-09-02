@@ -7,7 +7,7 @@ use YiiRocks\Voyti\TwoFactor\Console\DisableTwoFactorCommand;
 return [
     'yiirocks/voyti' => [
         // Contribute the "Two-Factor" link to core's account-settings menu. Core reads this under its
-        // own param key and merges it in (same cross-package pattern as twoFactorMethodRoutes), so it
+        // own param key and merges it in (same cross-package pattern as 2fa.methodRoutes), so it
         // needs no knowledge of this package.
         'accountMenuItems' => [
             [

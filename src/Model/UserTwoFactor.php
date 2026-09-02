@@ -21,6 +21,8 @@ final class UserTwoFactor extends ActiveRecord
     private bool $enabled = false;
     private ?string $method = null;
     private ?string $secret = null;
+    private int $secret_attempts = 0;
+    private ?int $secret_created_at = null;
     private int $user_id = 0;
 
     public static function findByUserId(int $userId): ?self
@@ -56,6 +58,11 @@ final class UserTwoFactor extends ActiveRecord
         return $this->secret;
     }
 
+    public function getSecretCreatedAt(): ?int
+    {
+        return $this->secret_created_at;
+    }
+
     public function getUserId(): int
     {
         return $this->user_id;
@@ -75,6 +82,26 @@ final class UserTwoFactor extends ActiveRecord
         return ['user_id'];
     }
 
+    public function recordEmailAttempt(int $lifespan, int $maxAttempts): bool
+    {
+        $affected = $this->updateAllCounters(
+            ['secret_attempts' => 1],
+            [
+                'and',
+                ['user_id' => $this->user_id],
+                ['>=', 'secret_created_at', time() - $lifespan],
+                ['<', 'secret_attempts', $maxAttempts],
+            ],
+        );
+
+        if ($affected !== 1) {
+            return false;
+        }
+
+        $this->secret_attempts++;
+        return true;
+    }
+
     public function setEnabled(bool $enabled): void
     {
         $this->enabled = $enabled;
@@ -88,6 +115,16 @@ final class UserTwoFactor extends ActiveRecord
     public function setSecret(?string $secret): void
     {
         $this->secret = $secret;
+    }
+
+    public function setSecretAttempts(int $attempts): void
+    {
+        $this->secret_attempts = $attempts;
+    }
+
+    public function setSecretCreatedAt(?int $createdAt): void
+    {
+        $this->secret_created_at = $createdAt;
     }
 
     public function setUserId(int $userId): void
