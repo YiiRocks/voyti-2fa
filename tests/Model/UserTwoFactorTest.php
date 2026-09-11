@@ -31,15 +31,18 @@ final class UserTwoFactorTest extends TestCase
         self::assertSame(0, $entity->getUserId());
         self::assertFalse($entity->isEnabled());
         self::assertNull($entity->getSecret());
+        self::assertNull($entity->getSecretCreatedAt());
         self::assertNull($entity->getMethod());
 
         $entity->setUserId(42);
         $entity->setSecret('s3cr3t');
+        $entity->setSecretCreatedAt(1234567890);
         $entity->setMethod('totp');
         $entity->setEnabled(true);
 
         self::assertSame(42, $entity->getUserId());
         self::assertSame('s3cr3t', $entity->getSecret());
+        self::assertSame(1234567890, $entity->getSecretCreatedAt());
         self::assertSame('totp', $entity->getMethod());
         self::assertTrue($entity->isEnabled());
 
@@ -47,6 +50,8 @@ final class UserTwoFactorTest extends TestCase
         self::assertFalse($entity->isEnabled());
         $entity->setSecret(null);
         self::assertNull($entity->getSecret());
+        $entity->setSecretCreatedAt(null);
+        self::assertNull($entity->getSecretCreatedAt());
         $entity->setMethod(null);
         self::assertNull($entity->getMethod());
     }
